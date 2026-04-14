@@ -21,7 +21,7 @@ from tensorflow.keras.callbacks import EarlyStopping
 
 import joblib
 
-# ────────────────────────────────────────────
+# ─────────────────────────────────────────────
 # REPRODUCIBILITY
 # ─────────────────────────────────────────────
 SEED = 42
@@ -126,9 +126,25 @@ plt.title("Correlation Heatmap (Top 20 Features Related to Phishing)")
 plt.tight_layout()
 plt.show()
 
-important_cols = target_corr.head(6).index
+important_cols = ['length_url', 'ratio_digits_url', 'length_hostname', 
+                  'nb_hyperlinks', 'ratio_extHyperlinks', 'domain_age']
 corr[important_cols].hist(figsize=(12, 8), bins=30, color='blue')
 plt.suptitle("Distribution of Top Influencing Features", fontsize=16)
+plt.tight_layout()
+plt.show()
+
+fig, axes = plt.subplots(2, 3, figsize=(12, 8))
+axes = axes.flatten()
+
+for i, col in enumerate(important_cols[:6]):
+    sns.boxplot(x='label', y=col, data=corr, 
+                palette=['steelblue', 'salmon'],
+                ax=axes[i])
+    axes[i].set_title(col)
+    axes[i].set_xlabel('')
+    axes[i].set_xticklabels(['Legitimate', 'Phishing'])
+
+plt.suptitle("EDA — Feature Spread by Class (+ = mean)", fontsize=14)
 plt.tight_layout()
 plt.show()
 
@@ -347,7 +363,53 @@ print("="*60)
 print(val_results.to_string(index=False))
 
 # ─────────────────────────────────────────────
-# 14. FINAL TEST SET EVALUATION
+# 14. MODEL COMPARISON BAR CHART
+# ─────────────────────────────────────────────
+metrics = ['Accuracy', 'Precision', 'Recall', 'F1-Score']
+x = np.arange(len(val_results['Model']))
+width = 0.2
+
+fig, ax = plt.subplots(figsize=(12, 6))
+for i, metric in enumerate(metrics):
+    ax.bar(x + i * width, val_results[metric], width, label=metric)
+
+ax.set_xlabel('Model')
+ax.set_ylabel('Score')
+ax.set_title('Model Performance Comparison — Phishing URL Detection')
+ax.set_xticks(x + width * 1.5)
+ax.set_xticklabels(['Logistic\nRegression', 'Decision\nTree', 'Random\nForest', 'SVM', 'Deep Neural\nNetwork'])
+ax.legend()
+ax.set_ylim(0.88, 1.0)
+plt.tight_layout()
+plt.show()
+
+# ─────────────────────────────────────────────
+# 15. RADAR CHART
+# ─────────────────────────────────────────────
+categories = ['Accuracy', 'Precision', 'Recall', 'F1-Score']
+N = len(categories)
+angles = [n / float(N) * 2 * np.pi for n in range(N)]
+angles += angles[:1]
+
+fig, ax = plt.subplots(figsize=(8, 8), subplot_kw=dict(polar=True))
+model_labels = ['Logistic Regression', 'Decision Tree', 'Random Forest', 'SVM', 'Deep Neural Network']
+
+for idx, row in val_results.iterrows():
+    values = [row['Accuracy'], row['Precision'], row['Recall'], row['F1-Score']]
+    values += values[:1]
+    ax.plot(angles, values, 'o-', linewidth=2, label=model_labels[idx])
+    ax.fill(angles, values, alpha=0.05)
+
+ax.set_xticks(angles[:-1])
+ax.set_xticklabels(categories)
+ax.set_ylim(0.85, 1.0)
+ax.set_title('Model Comparison — Radar Chart\nPhishing URL Detection', size=14)
+ax.legend(loc='upper right', bbox_to_anchor=(1.3, 1.1))
+plt.tight_layout()
+plt.show()
+
+# ─────────────────────────────────────────────
+# 16. FINAL TEST SET EVALUATION
 # ─────────────────────────────────────────────
 print("\n" + "="*60)
 print("FINAL TEST SET EVALUATION")
@@ -373,7 +435,7 @@ print("="*60)
 print(test_results.to_string(index=False))
 
 # ─────────────────────────────────────────────
-# 15. FEATURE IMPORTANCE
+# 17. FEATURE IMPORTANCE
 # ─────────────────────────────────────────────
 rf_feat_imp = pd.Series(rf.feature_importances_, index=selected_features)
 rf_feat_imp = rf_feat_imp.sort_values(ascending=False)
@@ -389,7 +451,7 @@ print("\nTop 15 Most Important Features:")
 print(rf_feat_imp.head(15))
 
 # ─────────────────────────────────────────────
-# 16. SAVE MODELS
+# 18. SAVE MODELS
 # ─────────────────────────────────────────────
 ml_models = {
     "Logistic Regression": (log_reg, lr_test),
@@ -421,16 +483,8 @@ print("Selected features saved as selected_features.pkl")
 # ═══════════════════════════════════════════════════════════
 
 # ─────────────────────────────────────────────
-# 17. ROC-AUC CURVES FOR ALL MODELS
+# 19. ROC-AUC CURVES FOR ALL MODELS
 # ─────────────────────────────────────────────
-colors = {
-    "Logistic Regression": "#9b59b6",
-    "Decision Tree":       "#e6a817",
-    "Random Forest":       "#3266ad",
-    "SVM":                 "#e05c2e",
-    "Deep Neural Network": "#2a9d5c"
-}
-
 plt.figure(figsize=(8, 6))
 
 roc_models = {
@@ -444,14 +498,12 @@ for name, model in roc_models.items():
     y_prob = model.predict_proba(X_test_selected)[:, 1]
     fpr, tpr, _ = roc_curve(y_test, y_prob)
     roc_auc = auc(fpr, tpr)
-    plt.plot(fpr, tpr, color=colors[name], lw=2,
-             label=f"{name} (AUC = {roc_auc:.4f})")
+    plt.plot(fpr, tpr, lw=2, label=f"{name} (AUC = {roc_auc:.4f})")
 
 dnn_prob = dnn_model.predict(X_test_selected).flatten()
 fpr_dnn, tpr_dnn, _ = roc_curve(y_test, dnn_prob)
 roc_auc_dnn = auc(fpr_dnn, tpr_dnn)
-plt.plot(fpr_dnn, tpr_dnn, color=colors["Deep Neural Network"], lw=2,
-         label=f"Deep Neural Network (AUC = {roc_auc_dnn:.4f})")
+plt.plot(fpr_dnn, tpr_dnn, lw=2, label=f"Deep Neural Network (AUC = {roc_auc_dnn:.4f})")
 
 plt.plot([0, 1], [0, 1], 'k--', lw=1, label="Random (AUC = 0.50)")
 
@@ -474,7 +526,7 @@ print(f"Deep Neural Network: AUC = {roc_auc_dnn:.4f}")
 # ═══════════════════════════════════════════════════════════
 
 # ─────────────────────────────────────────────
-# 18. 5-FOLD CROSS-VALIDATION
+# 20. 5-FOLD CROSS-VALIDATION
 # ─────────────────────────────────────────────
 print("\n" + "="*60)
 print("5-FOLD CROSS-VALIDATION RESULTS")
